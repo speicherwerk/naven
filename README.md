@@ -53,7 +53,7 @@ version = "0.1.1"
 Whereas the minimal `pom.xml` has 6 lines, eyesoreing XML and some mundane stuff
 to remember:
 
-```toml
+```xml
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
   <groupId>foo</groupId>
