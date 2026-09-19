@@ -18,6 +18,7 @@ pub struct Project {
     pub repositories: Vec<Repository>,
     pub dependencies: Vec<Dependency>,
     pub plugins: Vec<Plugin>,
+    pub rest: Table,
 }
 
 #[derive(Clone, Debug)]
@@ -50,37 +51,30 @@ pub struct Plugin {
 
 impl Project {
     pub fn parse(mut table: Table) -> Result<Self, String> {
-        let project_tbl = mandatory_table_from_table(&mut table, "project")
+        let mut project_tbl = mandatory_table(&mut table, "project")
             .map_err(|()| String::from("missing `project` table"))?;
 
-        let group = mandatory_string_from_table(project_tbl, "group")
-            .map_err(|()| String::from("expected string `group` in `project` table"))?
-            .to_owned();
-        let artifact = mandatory_string_from_table(project_tbl, "artifact")
-            .map_err(|()| String::from("expected string `artifact` in `project` table"))?
-            .to_owned();
-        let version = mandatory_string_from_table(project_tbl, "version")
-            .map_err(|()| String::from("expected string `version` in `project` table"))?
-            .to_owned();
+        let group = mandatory_string(&mut project_tbl, "group")
+            .map_err(|()| String::from("expected string `group` in `project` table"))?;
+        let artifact = mandatory_string(&mut project_tbl, "artifact")
+            .map_err(|()| String::from("expected string `artifact` in `project` table"))?;
+        let version = mandatory_string(&mut project_tbl, "version")
+            .map_err(|()| String::from("expected string `version` in `project` table"))?;
 
-        let packaging = optional_string_from_table(project_tbl, "packaging")
-            .map_err(|()| String::from("expected `packaging` in `project` table to be a string"))?
-            .map(ToOwned::to_owned);
-        let name = optional_string_from_table(project_tbl, "name")
-            .map_err(|()| String::from("expected `name` in `project` table to be a string"))?
-            .map(ToOwned::to_owned);
-        let url = optional_string_from_table(project_tbl, "url")
-            .map_err(|()| String::from("expected `url` in `project` table to be a string"))?
-            .map(ToOwned::to_owned);
+        let packaging = optional_string(&mut project_tbl, "packaging")
+            .map_err(|()| String::from("expected `packaging` in `project` table to be a string"))?;
+        let name = optional_string(&mut project_tbl, "name")
+            .map_err(|()| String::from("expected `name` in `project` table to be a string"))?;
+        let url = optional_string(&mut project_tbl, "url")
+            .map_err(|()| String::from("expected `url` in `project` table to be a string"))?;
 
-        let java = optional_table_from_table(&mut table, "java")
+        let java = optional_table(&mut table, "java")
             .map_err(|()| String::from("expected `java` to be a table"))?
-            .map(|t| Java::parse(t))
+            .map(Java::parse)
             .transpose()?;
 
-        let repositories = if let Some(repository_tbl) =
-            optional_table_from_table(&mut table, "repositories")
-                .map_err(|()| String::from("expected `repositories` to be a table"))?
+        let repositories = if let Some(repository_tbl) = optional_table(&mut table, "repositories")
+            .map_err(|()| String::from("expected `repositories` to be a table"))?
         {
             let mut repositories = Vec::new();
             for (key, val) in repository_tbl.into_iter() {
@@ -92,8 +86,8 @@ impl Project {
         };
 
         let dependencies = if let Some(dependency_table) =
-            optional_table_from_table(&mut table, "dependencies")
-                .map_err(|()| String::from("expected `dependencies` to be a value"))?
+            optional_table(&mut table, "dependencies")
+                .map_err(|()| String::from("expected `dependencies` to be a table"))?
         {
             parse_dependencies_like(dependency_table)?
                 .into_iter()
@@ -107,9 +101,8 @@ impl Project {
             Vec::new()
         };
 
-        let plugins = if let Some(plugin_table) =
-            optional_table_from_table(&mut table, "plugins")
-                .map_err(|()| String::from("expected `plugins` to be a value"))?
+        let plugins = if let Some(plugin_table) = optional_table(&mut table, "plugins")
+            .map_err(|()| String::from("expected `plugins` to be a table"))?
         {
             parse_dependencies_like(plugin_table)?
                 .into_iter()
@@ -134,6 +127,7 @@ impl Project {
             repositories,
             dependencies,
             plugins,
+            rest: table,
         })
     }
 
@@ -145,13 +139,13 @@ impl Project {
 
 /// Depth-searches the given table and returns all final-layer values together
 /// with the dot-separated path and the name of the final-layer value.
-fn find_values_and_concat_path(table: &Table) -> Vec<(String, String, &Value)> {
+fn find_values_and_concat_path(table: &mut Table) -> Vec<(String, String, &Value)> {
     fn recurse<'a>(
         table: &'a toml::Table,
         path: &mut Vec<String>,
         results: &mut Vec<(String, String, &'a Value)>,
     ) {
-        for (name, value) in table {
+        for (name, value) in table.into_iter() {
             if let Value::Table(t) = value
                 && t.len() == 1
             {
@@ -170,16 +164,16 @@ fn find_values_and_concat_path(table: &Table) -> Vec<(String, String, &Value)> {
 }
 
 /// Returns (groupId, artifactId, specification)
-fn parse_dependencies_like(table: &Table) -> Result<Vec<(String, String, Table)>, String> {
+fn parse_dependencies_like(mut table: Table) -> Result<Vec<(String, String, Table)>, String> {
     let mut result = Vec::new();
-    let entries = find_values_and_concat_path(table);
+    let entries = find_values_and_concat_path(&mut table);
     for (group, artifact, value) in entries.into_iter() {
         let spec = match value {
             Value::Table(t) => t.clone(),
             Value::String(s) => {
-                let mut table = Table::new();
-                table.insert(String::from("version"), Value::String(s.to_owned()));
-                table
+                let mut t = Table::new();
+                t.insert(String::from("version"), Value::String(s.to_owned()));
+                t
             }
             _ => {
                 return Err(format!(
@@ -192,44 +186,52 @@ fn parse_dependencies_like(table: &Table) -> Result<Vec<(String, String, Table)>
     Ok(result)
 }
 
-fn optional_string_from_table<'a>(table: &'a Table, name: &str) -> Result<Option<&'a str>, ()> {
-    if let Some(val) = table.get(name) {
-        val.as_str().ok_or(()).map(Option::Some)
+fn optional_string(table: &mut Table, name: &str) -> Result<Option<String>, ()> {
+    if let Some(val) = table.remove(name) {
+        if let Value::String(s) = val {
+            Ok(Some(s))
+        } else {
+            Err(())
+        }
     } else {
         Ok(None)
     }
 }
 
-fn mandatory_string_from_table<'a>(table: &'a Table, name: &str) -> Result<&'a str, ()> {
-    table.get(name).and_then(Value::as_str).ok_or(())
+fn mandatory_string(table: &mut Table, name: &str) -> Result<String, ()> {
+    match table.remove(name) {
+        Some(Value::String(s)) => Ok(s),
+        _ => Err(()),
+    }
 }
 
-fn optional_table_from_table<'a>(
-    table: &'a mut Table,
-    name: &str,
-) -> Result<Option<&'a mut Table>, ()> {
-    if let Some(val) = table.get_mut(name) {
-        val.as_table_mut().ok_or(()).map(Option::Some)
+fn optional_table(table: &mut Table, name: &str) -> Result<Option<Table>, ()> {
+    if let Some(val) = table.remove(name) {
+        if let Value::Table(t) = val {
+            Ok(Some(t))
+        } else {
+            Err(())
+        }
     } else {
         Ok(None)
     }
 }
 
-fn mandatory_table_from_table<'a>(table: &'a mut Table, name: &str) -> Result<&'a mut Table, ()> {
-    table.get_mut(name).and_then(Value::as_table_mut).ok_or(())
+fn mandatory_table(table: &mut Table, name: &str) -> Result<Table, ()> {
+    match table.remove(name) {
+        Some(Value::Table(t)) => Ok(t),
+        _ => Err(()),
+    }
 }
 
 impl Java {
-    fn parse(table: &Table) -> Result<Self, String> {
-        let version = optional_string_from_table(table, "version")
-            .map_err(|()| String::from("expected `version` in `java` table to be a string"))?
-            .map(ToOwned::to_owned);
-        let source = optional_string_from_table(table, "source")
-            .map_err(|()| String::from("expected `source` in `java` table to be a string"))?
-            .map(ToOwned::to_owned);
-        let target = optional_string_from_table(table, "target")
-            .map_err(|()| String::from("expected `target` in `java` table to be a string"))?
-            .map(ToOwned::to_owned);
+    fn parse(mut table: Table) -> Result<Self, String> {
+        let version = optional_string(&mut table, "version")
+            .map_err(|()| String::from("expected `version` in `java` table to be a string"))?;
+        let source = optional_string(&mut table, "source")
+            .map_err(|()| String::from("expected `source` in `java` table to be a string"))?;
+        let target = optional_string(&mut table, "target")
+            .map_err(|()| String::from("expected `target` in `java` table to be a string"))?;
 
         Ok(Self {
             version,
@@ -240,13 +242,12 @@ impl Java {
 }
 
 impl Repository {
-    fn parse(id: String, value: &Value) -> Result<Self, String> {
-        let url = value
-            .as_str()
-            .ok_or_else(|| {
-                format!("expected value of repository `{id}` to be a string; found `{value}`")
-            })?
-            .to_owned();
+    fn parse(id: String, value: Value) -> Result<Self, String> {
+        let Value::String(url) = value else {
+            return Err(format!(
+                "expected value of repository `{id}` to be a string; found `{value}`"
+            ));
+        };
 
         Ok(Repository {
             id,
@@ -305,6 +306,8 @@ impl XmlWrite for Project {
             writer.close_tag()?;
             writer.close_tag()?;
         }
+
+        writer.write_table(&self.rest)?;
 
         writer.close_all()
     }
