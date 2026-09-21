@@ -21,11 +21,11 @@ source = "21"
 target = "21"
 
 [dependencies]
-com.google.guava.guava = "33.7"
-org.junit.jupiter.junit-jupiter = { version = "RELEASE", scope = "test" }
+"com.google.guava:guava" = "33.7"
+"org.junit.jupiter:junit-jupiter" = { version = "RELEASE", scope = "test" }
 
 [plugins]
-maven-assembly-plugin = {
+":maven-assembly-plugin" = {
     configuration.archive.manifest.mainClass = "org.example.my-app.Main",
     configuration.descriptorRefs.descriptorRef = "jar-with-dependencies",
     executions.execution = {

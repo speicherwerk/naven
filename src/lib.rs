@@ -89,7 +89,8 @@ impl Project {
             optional_table(&mut table, "dependencies")
                 .map_err(|()| String::from("expected `dependencies` to be a table"))?
         {
-            parse_dependencies_like(dependency_table)?
+            parse_dependencies_like(dependency_table)
+                .map_err(|e| format!("{e} for entries in `dependency` table"))?
                 .into_iter()
                 .map(|(group, artifact, spec)| Dependency {
                     group,
@@ -104,7 +105,8 @@ impl Project {
         let plugins = if let Some(plugin_table) = optional_table(&mut table, "plugins")
             .map_err(|()| String::from("expected `plugins` to be a table"))?
         {
-            parse_dependencies_like(plugin_table)?
+            parse_dependencies_like(plugin_table)
+                .map_err(|e| format!("{e} for entries in `plugin` table"))?
                 .into_iter()
                 .map(|(group, artifact, spec)| Plugin {
                     group,
@@ -137,39 +139,15 @@ impl Project {
     }
 }
 
-/// Depth-searches the given table and returns all final-layer values together
-/// with the dot-separated path and the name of the final-layer value.
-fn find_values_and_concat_path(table: &mut Table) -> Vec<(String, String, &Value)> {
-    fn recurse<'a>(
-        table: &'a toml::Table,
-        path: &mut Vec<String>,
-        results: &mut Vec<(String, String, &'a Value)>,
-    ) {
-        for (name, value) in table.into_iter() {
-            if let Value::Table(t) = value
-                && t.len() == 1
-            {
-                path.push(name.clone());
-                recurse(t, path, results);
-                path.pop();
-            } else {
-                results.push((path.join("."), name.clone(), value));
-            }
-        }
-    }
-
-    let mut results = Vec::new();
-    recurse(table, &mut Vec::new(), &mut results);
-    results
-}
-
 /// Returns (groupId, artifactId, specification)
-fn parse_dependencies_like(mut table: Table) -> Result<Vec<(String, String, Table)>, String> {
+fn parse_dependencies_like(table: Table) -> Result<Vec<(String, String, Table)>, String> {
     let mut result = Vec::new();
-    let entries = find_values_and_concat_path(&mut table);
-    for (group, artifact, value) in entries.into_iter() {
+    for (name, value) in table {
+        let (group, artifact) = name
+            .split_once(':')
+            .ok_or_else(|| format!("expected `group:artifact`, found `{name}`"))?;
         let spec = match value {
-            Value::Table(t) => t.clone(),
+            Value::Table(t) => t,
             Value::String(s) => {
                 let mut t = Table::new();
                 t.insert(String::from("version"), Value::String(s.to_owned()));
@@ -181,7 +159,7 @@ fn parse_dependencies_like(mut table: Table) -> Result<Vec<(String, String, Tabl
                 ));
             }
         };
-        result.push((group, artifact, spec));
+        result.push((group.to_owned(), artifact.to_owned(), spec));
     }
     Ok(result)
 }
