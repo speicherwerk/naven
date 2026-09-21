@@ -1,0 +1,21 @@
+group = "org.example"
+artifact = "my-app"
+version = "1.0"
+packaging = "jar"
+name = "My App"
+url = "https://example.org/my-app"
+
+[properties]
+release = "21"
+encoding = "UTF-8"
+foo = "bar"
+
+[repositories]
+my-repo = "https://maven.example.org"
+
+[dependencies]
+"com.example:my-lib" = { version = "2.1", bar = "baz" }
+
+[plugins]
+"com.example:my-plugin" = { version = "3.3", baz = "foo" }
+

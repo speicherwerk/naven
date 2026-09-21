@@ -1,0 +1,37 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.example</groupId>
+  <artifactId>my-app</artifactId>
+  <version>1.0</version>
+  <name>My App</name>
+  <url>https://example.org/my-app</url>
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <foo>bar</foo>
+  </properties>
+  <repositories>
+    <repository>
+      <id>my-repo</id>
+      <url>https://maven.example.org</url>
+    </repository>
+  </repositories>
+  <dependencies>
+    <dependency>
+      <groupId>com.example</groupId>
+      <artifactId>my-lib</artifactId>
+      <version>2.1</version>
+      <bar>baz</bar>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>com.example</groupId>
+        <artifactId>my-plugin</artifactId>
+        <version>3.3</version>
+        <baz>foo</baz>
+      </plugin>
+    </plugins>
+  </build>
+</project>

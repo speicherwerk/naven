@@ -49,3 +49,10 @@ fn mixed_dependencies() {
     const POM_XML: &str = include_str!("mixed_dependencies.xml");
     test_compare(POM_TOML, POM_XML);
 }
+
+#[test]
+fn all_recognized_keys() {
+    const POM_TOML: &str = include_str!("all.toml");
+    const POM_XML: &str = include_str!("all.xml");
+    test_compare(POM_TOML, POM_XML);
+}
