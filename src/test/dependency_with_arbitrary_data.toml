@@ -1,0 +1,12 @@
+[project]
+group = "org.example"
+artifact = "my-app"
+version = "1.0.0"
+
+[dependencies]
+"com.example:my-lib" = {
+    version = "3.0.1",
+    scope = "test",
+    foo = "bar",
+    baz = { lorem_ipsum = true, one = 1 }
+}
