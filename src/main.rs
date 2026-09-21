@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod test;
+
 use std::{
     fs::{File, OpenOptions},
     io::{BufWriter, Read, Seek, SeekFrom, Write},
@@ -83,6 +86,9 @@ fn rebuild_pom_xml(pom_toml: &mut File, pom_xml: &mut File) -> Result<(), String
 }
 
 fn write_pom_xml(pom_xml: &mut File, project: Project) -> Result<(), String> {
+    pom_xml
+        .set_len(0)
+        .map_err(|e| format!("Error writing to `.pom.xml`: {e}"))?;
     pom_xml
         .seek(SeekFrom::Start(0))
         .map_err(|e| format!("Error writing to `.pom.xml`: {e}"))?;
