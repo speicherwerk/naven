@@ -14,7 +14,7 @@ pub struct Project {
     pub packaging: Option<String>,
     pub name: Option<String>,
     pub url: Option<String>,
-    pub java: Option<Java>,
+    pub properties: Option<Properties>,
     pub repositories: Vec<Repository>,
     pub dependencies: Vec<Dependency>,
     pub plugins: Vec<Plugin>,
@@ -22,10 +22,10 @@ pub struct Project {
 }
 
 #[derive(Clone, Debug)]
-pub struct Java {
-    pub version: Option<String>,
-    pub source: Option<String>,
-    pub target: Option<String>,
+pub struct Properties {
+    pub release: Option<String>,
+    pub encoding: Option<String>,
+    pub rest: Table,
 }
 
 #[derive(Clone, Debug)]
@@ -51,26 +51,23 @@ pub struct Plugin {
 
 impl Project {
     pub fn parse(mut table: Table) -> Result<Self, String> {
-        let mut project_tbl = mandatory_table(&mut table, "project")
-            .map_err(|()| String::from("missing `project` table"))?;
+        let group = mandatory_string(&mut table, "group")
+            .map_err(|()| String::from("expected string `group`"))?;
+        let artifact = mandatory_string(&mut table, "artifact")
+            .map_err(|()| String::from("expected string `artifact`"))?;
+        let version = mandatory_string(&mut table, "version")
+            .map_err(|()| String::from("expected string `version`"))?;
 
-        let group = mandatory_string(&mut project_tbl, "group")
-            .map_err(|()| String::from("expected string `group` in `project` table"))?;
-        let artifact = mandatory_string(&mut project_tbl, "artifact")
-            .map_err(|()| String::from("expected string `artifact` in `project` table"))?;
-        let version = mandatory_string(&mut project_tbl, "version")
-            .map_err(|()| String::from("expected string `version` in `project` table"))?;
+        let packaging = optional_string(&mut table, "packaging")
+            .map_err(|()| String::from("expected `packaging` to be a string"))?;
+        let name = optional_string(&mut table, "name")
+            .map_err(|()| String::from("expected `name` to be a string"))?;
+        let url = optional_string(&mut table, "url")
+            .map_err(|()| String::from("expected `url` to be a string"))?;
 
-        let packaging = optional_string(&mut project_tbl, "packaging")
-            .map_err(|()| String::from("expected `packaging` in `project` table to be a string"))?;
-        let name = optional_string(&mut project_tbl, "name")
-            .map_err(|()| String::from("expected `name` in `project` table to be a string"))?;
-        let url = optional_string(&mut project_tbl, "url")
-            .map_err(|()| String::from("expected `url` in `project` table to be a string"))?;
-
-        let java = optional_table(&mut table, "java")
-            .map_err(|()| String::from("expected `java` to be a table"))?
-            .map(Java::parse)
+        let properties = optional_table(&mut table, "properties")
+            .map_err(|()| String::from("expected `properties` to be a table"))?
+            .map(Properties::parse)
             .transpose()?;
 
         let repositories = if let Some(repository_tbl) = optional_table(&mut table, "repositories")
@@ -125,7 +122,7 @@ impl Project {
             packaging,
             name,
             url,
-            java,
+            properties,
             repositories,
             dependencies,
             plugins,
@@ -195,26 +192,19 @@ fn optional_table(table: &mut Table, name: &str) -> Result<Option<Table>, ()> {
     }
 }
 
-fn mandatory_table(table: &mut Table, name: &str) -> Result<Table, ()> {
-    match table.remove(name) {
-        Some(Value::Table(t)) => Ok(t),
-        _ => Err(()),
-    }
-}
-
-impl Java {
+impl Properties {
     fn parse(mut table: Table) -> Result<Self, String> {
-        let version = optional_string(&mut table, "version")
-            .map_err(|()| String::from("expected `version` in `java` table to be a string"))?;
-        let source = optional_string(&mut table, "source")
-            .map_err(|()| String::from("expected `source` in `java` table to be a string"))?;
-        let target = optional_string(&mut table, "target")
-            .map_err(|()| String::from("expected `target` in `java` table to be a string"))?;
+        let release = optional_string(&mut table, "release").map_err(|()| {
+            String::from("expected `release` in `properties` table to be a string")
+        })?;
+        let encoding = optional_string(&mut table, "encoding").map_err(|()| {
+            String::from("expected `encoding` in `properties` table to be a string")
+        })?;
 
         Ok(Self {
-            version,
-            source,
-            target,
+            release,
+            encoding,
+            rest: table,
         })
     }
 }
@@ -255,8 +245,8 @@ impl XmlWrite for Project {
             writer.element("url", url)?;
         }
 
-        if let Some(java) = &self.java {
-            java.write(writer)?;
+        if let Some(properties) = &self.properties {
+            properties.write(writer)?;
         }
 
         if !self.repositories.is_empty() {
@@ -303,18 +293,16 @@ impl XmlWrite for Repository {
     }
 }
 
-impl XmlWrite for Java {
+impl XmlWrite for Properties {
     fn write<W: Write>(&self, writer: &mut XmlWriter<W>) -> Result<(), &'static str> {
         writer.open_tag(String::from("properties"))?;
-        if let Some(version) = &self.version {
-            writer.element("java.version", version)?;
+        if let Some(release) = &self.release {
+            writer.element("maven.compiler.release", release)?;
         }
-        if let Some(source) = &self.source {
-            writer.element("maven.compiler.source", source)?;
+        if let Some(encoding) = &self.encoding {
+            writer.element("project.build.sourceEncoding", encoding)?;
         }
-        if let Some(target) = &self.target {
-            writer.element("maven.compiler.target", target)?;
-        }
+        writer.write_table(&self.rest)?;
         writer.close_tag()?;
         Ok(())
     }

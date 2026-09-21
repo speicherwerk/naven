@@ -2,8 +2,10 @@
 mod test;
 
 use std::{
-    fs::{File, OpenOptions},
-    io::{BufWriter, Read, Seek, SeekFrom, Write},
+    env,
+    fs::{self, File, OpenOptions},
+    io::{self, BufWriter, Read, Seek, SeekFrom, Write},
+    path::PathBuf,
     process::Command,
 };
 
@@ -16,6 +18,13 @@ const MVNW_PATH: &str = "mvnw.cmd";
 const MVNW_PATH: &str = "./mvnw";
 
 fn main() -> Result<(), String> {
+    let verb = env::args().nth(1);
+    if let Some(v) = verb
+        && v == "init"
+    {
+        return run_init();
+    }
+
     let mut pom_toml =
         File::open("pom.toml").map_err(|e| format!("Error opening pom.toml: {e}"))?;
     let pom_xml = OpenOptions::new()
@@ -46,7 +55,7 @@ fn main() -> Result<(), String> {
         .args(
             [String::from("--file"), String::from(".pom.xml")]
                 .into_iter()
-                .chain(std::env::args().skip(1)),
+                .chain(env::args().skip(1)),
         )
         .spawn()
         .map_err(|e| format!("{e}"))?
@@ -99,4 +108,95 @@ fn write_pom_xml(pom_xml: &mut File, project: Project) -> Result<(), String> {
     buf_writer
         .flush()
         .map_err(|e| format!("Error writing to `.pom.xml`: {e}"))
+}
+
+macro_rules! pom_toml_template {
+    () => {
+        r#"group = "{group}"
+artifact = "{artifact}"
+version = "{version}"
+
+[properties]
+release = "17"
+encoding = "UTF-8"
+"exec.mainClass" = "{group}.Main""#
+    };
+}
+
+macro_rules! main_java_template {
+    () => {
+        r#"package {group};
+
+public class Main {{
+    public static void main(String[] args) {{
+        System.out.println("\nHello World!\n");
+    }}
+}}"#
+    };
+}
+
+fn run_init() -> Result<(), String> {
+    let current_dir = env::current_dir().map_err(|e| format!("env error: {e}"))?;
+    if fs::read_dir(&current_dir)
+        .map_err(|e| format!("IO error: {e}"))?
+        .next()
+        .is_some()
+    {
+        return Err(String::from(
+            "refusing to init naven project: directoy is non-empty",
+        ));
+    }
+    let artifact = current_dir
+        .file_name()
+        .unwrap()
+        .to_str()
+        .ok_or_else(|| format!("current dir contains non-unicode symbols: {current_dir:?}"))?;
+    let group = std_prompt("Enter the project's groupId")?;
+    if group.is_empty() {
+        return Err(String::from("group may not be empty"));
+    }
+    let version = String::from("0.1.0-SNAPSHOT");
+    let pom_toml_str = format!(
+        pom_toml_template!(),
+        group = group,
+        artifact = artifact,
+        version = version
+    );
+    let gitignore_str = "target/";
+    let main_java_str = format!(main_java_template!(), group = group);
+
+    fs::write("pom.toml", pom_toml_str).map_err(|e| format!("error writing `pom.toml`: {e}"))?;
+    fs::write(".gitignore", gitignore_str)
+        .map_err(|e| format!("error writing `.gitignore`: {e}"))?;
+    let package_path: PathBuf = ["src", "main", "java"]
+        .into_iter()
+        .chain(group.split('.'))
+        .collect();
+    fs::create_dir_all(&package_path)
+        .map_err(|e| format!("error creating directory structure: {e}"))?;
+    fs::create_dir(
+        ["src", "main", "resources"]
+            .into_iter()
+            .collect::<PathBuf>(),
+    )
+    .map_err(|e| format!("error creating directory structure: {e}"))?;
+    fs::create_dir_all(["src", "test", "java"].into_iter().collect::<PathBuf>())
+        .map_err(|e| format!("error creating directory structure: {e}"))?;
+    let mut main_java_path = package_path;
+    main_java_path.push("Main.java");
+    fs::write(&main_java_path, main_java_str)
+        .map_err(|e| format!("error writing `{main_java_path:?}`: {e}"))?;
+
+    println!("\nSuccessfully generated project `{group}:{artifact}:{version}`!");
+    Ok(())
+}
+
+fn std_prompt(prompt: &str) -> Result<String, String> {
+    print!("{prompt}: ");
+    io::stdout().flush().map_err(|e| format!("IO error: {e}"))?;
+    let mut buf = String::new();
+    io::stdin()
+        .read_line(&mut buf)
+        .map_err(|e| format!("IO error: {e}"))?;
+    Ok(buf.trim().to_owned())
 }
